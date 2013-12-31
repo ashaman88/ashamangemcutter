@@ -5,11 +5,11 @@ Program AshamanGemCutter;
 {
 AshamanGemCutter v2.0
 -Make sure zoom is farthest out + srl graphic settings
--Turn off xp popup
+-Turn off xp popup as well as make-x progress window
 -Start at SW chest
 -Have gems in top right slot of bank
--If you want an accurate xp calc, have your first xp bar counter set to total or crafting
-and the counter can't say 'lots' either
+-xp bar counter set to total or crafting
+and the counter can't say 'lots' either (and put it in top right corner of chatbox
 -FILL OUT THE STUFF BELOW
 -READ THE OP DIRECTIONS
 }
@@ -22,15 +22,17 @@ and the counter can't say 'lots' either
 ///////////////////////////////////////////////////////////////////////
 
 Const
-  GemType      = 'Jade';      // *** What type of gem to cut? ***
-  QuickKey     = 0;
+  {Method Settings}
+  GemType      = '';      // *** What type of gem to cut? ***
+  QuickKey     = 0;       // ***What is the key you've set the uncut gems to? Don't f this up! ***
 
-  TakeBreaks   = False;
-  SwitchWorlds = True;    //Switch worlds after a break?
-  BreakIn      = 600;     //How long before we take a break? (minutes)
-  BreakFor     = 15;      //How long will we break for? (minutes)
-  Bir          = 13;      //Random minutes to add/subtract from how long until we break
-  Bfr          = 7;       //Random minutes to add/subjtract from break duraction
+  {Break Settings}
+  TakeBreaks   = False;   // ***Take Breaks or no?***
+  SwitchWorlds = False;   // ***Switch worlds after a break?***
+  BreakIn      = 600;     // ***How long before we take a break? (minutes)***
+  BreakFor     = 15;      // ***How long will we break for? (minutes)***
+  Bir          = 13;      // ***Random minutes to add/subtract from how long until we break***
+  Bfr          = 7;       // ***Random minutes to add/subjtract from break duraction***
 
 Procedure DeclarePlayers;
 Begin
@@ -43,7 +45,7 @@ Begin
   // loginName := '';      {Remove the "//" from this line if you arent using player manager}
   // password := '';       {Remove the "//" from this line if you arent using player manager}
     IsActive := True;
-    World := 0;           {Change this if you want to set a world to login to}
+    World := 0;            {Change this if you want to set a world to login to}
    // BankPin := ;         {Remove the "//" from this line if you arent using player manager and you have a pin}
   End;
   CurrentPlayer := 0;
@@ -65,6 +67,43 @@ Var
   W,X,Y,Z,RealBTime,BreakRounds,TotalBreaks: Integer;
   Timeout,CurrentBTime: TTimeMarker;
   GemsPH,XPH: Extended;
+
+{*******************************************************************************
+Function AutoupdateMe;
+By: Shuttleu
+Edited By: Ashaman88
+Description: Autoupdates Script.
+*******************************************************************************}
+Procedure AutoUpdateMe;
+Var
+  Neifile: Integer;
+  OnlineVersion, NewScript, NeiFeilNennen: String;
+Begin
+  Writeln('Checking for script updates...');
+  OnlineVersion := GetPage('http://ashamangemcutter.googlecode.com/git/Version.txt');
+  Writeln('Online Version: '+ToStr(OnlineVersion));
+  Writeln('Local Version: '+ToStr(ScriptVersion));
+  If (trim(OnlineVersion) > ScriptVersion) Then
+  Begin
+    WriteLn('Newer script version online!');
+    WriteLn('Autoupdating to newer version.');
+    NewScript := GetPage('http://ashamangemcutter.googlecode.com/git/AshamanGemCutter.simba');
+    NeiFeilNennen := ScriptPath+ 'AshamanGemCutter V'+OnlineVersion+'.simba';
+    Neifile := Rewritefile(NeiFeilNennen, true);
+    Try
+      WriteFileString(Neifile, NewScript);
+    Except
+      Begin
+        WriteLn('Fatal error writing to '+NeiFeilNennen+'!!');
+        Terminatescript;
+      End;
+    End;
+    CloseFile(Neifile);
+    WriteLn('New script downloaded to '+NeiFeilNennen+'!! Please use this one!!');
+    TerminateScript;
+  End Else
+    WriteLn('You have the latest version of the script!');
+End;
 
 procedure mouseOffClient(Direction: Integer; Stay: Boolean);  overload;
 var
@@ -267,7 +306,7 @@ Begin
   If XPH < 1000 Then
     XPH:=1000.0;
 
-  Writeln('========AshamanGemCrafter v'+ScriptVersion+'=========');
+  Writeln('========AshamanGemCutter v'+ScriptVersion+'=========');
   Writeln('Time Running: ' + TimeRunning);
   Writeln('Making: ' + GemType);
   Writeln('Gems Cut: ' + ToStr(GemCount));
@@ -572,6 +611,7 @@ End;
 Procedure Setup;
 Begin
   ClearDebug;
+  AutoUpdateMe;
 
   SetupSRL;
 
@@ -587,7 +627,6 @@ Begin
   Minimap.SetAngle(MM_DIRECTION_EAST);
   FindNormalRandoms;
 
-  Writeln('Setting up script');
   If conversationBox.continue(true, true) Then
     Wait(Randomrange(2000,3000));
 
@@ -597,7 +636,6 @@ Begin
   X := (BreakFor * 60000);
   Y := RandomRange(-BIR * 60000, BIR * 60000);
   Z := RandomRange(-BFR * 60000, BFR * 60000);
-  Writeln('Script ready.');
 
   Writeln('Looks like today were gonna be cutting some '+GemType+'s');
   Writeln('Goodluck!');
