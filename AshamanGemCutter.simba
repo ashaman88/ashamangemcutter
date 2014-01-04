@@ -23,7 +23,7 @@ and the counter can't say 'lots' either (and put it in top right corner of chatb
 
 Const
   {Method Settings}
-  GemType      = '';      // *** What type of gem to cut? ***
+  LeftClick   = True;     // ***Left click on chest? Small chance it could mess up, false for right click***
   QuickKey     = 0;       // ***What is the key you've set the uncut gems to? Don't f this up! ***
 
   {Break Settings}
@@ -59,14 +59,16 @@ End;
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 Const
-  ScriptVersion ='2.0';
+  ScriptVersion ='2.1';
   Debug = False;
 
 Var
   StartingExperience,XP,GemCount: Integer;
   W,X,Y,Z,RealBTime,BreakRounds,TotalBreaks: Integer;
   Timeout,CurrentBTime: TTimeMarker;
+  GemType: String;
   GemsPH,XPH: Extended;
+  GetItem: Boolean;
 
 {*******************************************************************************
 Function AutoupdateMe;
@@ -105,33 +107,6 @@ Begin
     WriteLn('You have the latest version of the script!');
 End;
 
-procedure mouseOffClient(Direction: Integer; Stay: Boolean);  overload;
-var
-  B: TBoxArray;
-  P: TPoint;
-  i, W, H,X,Y: Integer;
-begin
-  GetClientDimensions(W, H);
-  GetMousePos(X,Y);
-  if (X < 0) or (X > W) or (Y < 0) or (Y > H) then
-     exit;
-
-  SetLength(B, 4);
-
-  B[OFF_CLIENT_TOP] := [-300, -300, W, 0]; // top
-  B[OFF_CLIENT_BOTTOM] := [0, H, W, H +300];  // bottom
-  B[OFF_CLIENT_LEFT] := [0-300, 0, 0, H];   // left
-  B[OFF_CLIENT_RIGHT] := [W, 0, W +300, H];  // right
-
-  if (Direction = OFF_CLIENT_RANDOM) then
-    i := Random(4)
-  else
-    i := Direction;
-
-  P := Point(RandomRange(B[i].X1, B[i].X2), RandomRange(B[i].Y1, B[i].Y2));
-  Mouse(Point(P.X, P.Y), MOUSE_MOVE);
-end;
-
 Procedure FindNormalRandoms;
 Begin
   ExitSquealOfFortune;
@@ -139,46 +114,28 @@ Begin
 End;
 
 Function Antiban: Boolean;
-var
+Var
   I: Integer;
 Begin
   I := Random(600);
   Case I Of
-    1..3:
-      Begin
-        RandomRClickitem;
-        Result := True;
-      End;
-    4..7:
+    1: boredHuman(false);
+    2..7:
       Begin
         hoverSkill(SKILL_CRAFTING);
-        TabBackpack.Open;
-        Result := True;
+        Wait(GaussRangeInt(1000,2000));
       End;
-    8..11:
+    8..50: mouseMovingObject;
+    51..100: SleepAndMoveMouse(RandomRange(100,2000));
+    101..400:
       Begin
-        mousemovingobject;
-        Result := True;
+        MouseOffClient(Random(4));
+        Wait(RandomRange(2000, 3000));
       End;
-    12..200:
-      Begin
-        SleepAndMoveMouse(RandomRange(100,2000));
-        Result:=True;
-      End;
-    201..400:
-      Begin
-        Wait(RandomRange(250, 1500));
-        MouseOffClient(4,True);
-        Wait(RandomRange(3000, 6000));
-        Result:=True;
-      End;
-    401..600:
-      Begin
-        Wait(RandomRange(250, 1500));
-        Result:=True;
-      End;
+    501..600: Wait(RandomRange(1000, 2000));
+
   End;
-  Wait(RandomRange(250, 4000));
+  Wait(GaussRangeInt(0, 500));
 End;
 
 Function BreakHandler(BreakIn, BreakFor, randBreakIn, randBreakFor: Integer): Boolean;
@@ -258,39 +215,6 @@ begin
   print('chatBox.getXP(): XP found: ' + tostr(result), TDebug.SUB);
 end;
 
-Function WaitPixelChange(Time:Integer; Slot: Integer; AntiB: Boolean=False):Boolean;
-Var
-  ColorPoints: TPointArray;
-  InitialColors: TIntegerArray;
-  Inv: TBox;
-  Ave: Integer;
-  T: TTimeMarker;
-Begin
-  Inv:=TabBackpack.GetSlotBox(Slot);
-  Inv.Edit(+5,+5,-5,-5);
-
-  InitialColors:= Inv.GetColors;
-  Ave:=InitialColors.Average;
-  SetLength(InitialColors,0);
-
-  T.Start;
-  Repeat
-    Wait(Random(100));
-    SetLength(InitialColors,0);
-    InitialColors:= Inv.GetColors;
-    If Ave<>InitialColors.Average Then
-      Break;
-    If T.GetTime > Time Then
-    Begin
-      Result := False;
-      Exit;
-    End;
-    If AntiB Then
-      AntiBan;
-  Until(False);
-  Result := True;
-End;
-
 Procedure ProgressReport;
 Var
   TTB: Integer;
@@ -308,25 +232,23 @@ Begin
 
   Writeln('========AshamanGemCutter v'+ScriptVersion+'=========');
   Writeln('Time Running: ' + TimeRunning);
-  Writeln('Making: ' + GemType);
-  Writeln('Gems Cut: ' + ToStr(GemCount));
+  Writeln(GemType+'''s Cut: ' + ToStr(GemCount));
   Writeln('Experience Earned: ' + IntToStr(XP));
   Writeln('Experience/Hour: ' + ToStr(XPH));
-  Writeln('Gems/Hour: ' + ToStr(GemsPH));
+  Writeln(GemType+'''s/Hour: ' + ToStr(GemsPH));
   Writeln('======================================');
   If TakeBreaks Then
     Writeln('Time until break: '+MsToTime(TTB, Time_Bare));
 End;
 
-Function OpenBank: Boolean;
+Function OpenBank(LClick: Boolean): Boolean;
 Var
-  X,Y,H,I,CTS,Time: Integer;
+  X,Y,H,I,Time: Integer;
   T: TTimeMarker;
   ChestBox: TBox;
-  TPA,TPA2: TPointArray;
-  ATPA,ATPA2: T2DPointArray;
+  TPA: TPointArray;
+  ATPA: T2DPointArray;
   TBA: TBoxArray;
-  MBP: TPoint;
 Begin
   Result := False;
 
@@ -335,11 +257,7 @@ Begin
 
   Result:= BankScreen.IsOpen Or PinScreen.IsOpen;
   If Result Then
-  Begin
-    SetLength(ATPA,0);
-    SetLength(TPA,0);
     Exit;
-  End;
 
   If (ChooseOption.OptionsExist(['Exam','mine','Examine','Canc','ncel','Cancel'],400)) Then
   Begin
@@ -348,12 +266,17 @@ Begin
     MouseBox(TabBackpack.GetBounds,Mouse_Move);
   End;
 
-  findColorsTolerance(tpa, 7499110, Mainscreen.GetBounds, 18,colorSetting(2,0.08,0.06));
+  ChestBox:=Mainscreen.playerBox;
+  ChestBox.Edit(-35,-35,+35,+35);
 
-  atpa := tpa.cluster(20);
-  atpa.sortFromFirstPoint(Point(330,200));
+  findColorsTolerance(tpa, 7433830, ChestBox, 18,colorSetting(2,0.18,0.07));    //silver
+
+  atpa := tpa.cluster(15);
   atpa.filterBetween(0, 10);
-  atpa.filterBetween(150, 10000);
+  atpa.filterBetween(200, 10000);
+  atpa.sortFromFirstPoint(Point(330,200));
+
+  SetLength(TPA,0);
 
   If (Length(ATPA) = 0) Then
   Begin
@@ -376,28 +299,30 @@ Begin
     If Debug Then
       Writeln('Silver Chest Length: '+ToStr(Length(atpa[i]))+' for I:= '+ToStr(I));
 
-    ChestBox := GetTPABounds(ATPA[I]);
+    ChestBox := ATPA[I].GetBounds;
+    ChestBox.Edit(-10,0,+10,0);
+    ChestBox.SetLimit(Mainscreen.GetBounds);
 
     With ChestBox Do
     Begin
       If Not IsLoggedIn Then
         Exit;
 
-      findColorsTolerance(tpa2, 987927, ChestBox, 1,colorSetting(2, 2.78,3.28));
+      findColorsTolerance(TPA, 987927, ChestBox, 1,colorSetting(2, 2.78,7.16));  //BLACKKKKK
 
       If Debug Then
-        Writeln('Black Chest Length: '+ToStr(Length(TPA2))+' for I:= '+ToStr(I));
+        Writeln('Black Chest Length: '+ToStr(Length(TPA))+' for I:= '+ToStr(I));
 
-      If Length(TPA2) > 40 Then
+      If Length(TPA) > 30 Then
       Begin
         SetArrayLength(TBA, Length(TBA)+1);
-        ChestBox := IntToBox(Max(ChestBox.X1,0),Max(ChestBox.Y1,0),Min(ChestBox.X2,Mainscreen.X2),Min(ChestBox.Y2,Mainscreen.Y2));
+        ChestBox.Edit(+12,+2,-10,-2);
         TBA[High(TBA)] := ChestBox;
       End;
+      SetLength(TPA,0);
     End;
   End;
 
-  If Debug Then
   Try
     SmartImage.Clear;
     SmartImage.DrawBoxes(TBA, False, clRed);
@@ -405,15 +330,10 @@ Begin
     Writeln('Failed Drawing Boxes.');
   End;
 
-  SetLength(TPA,0);
   SetLength(ATPA,0);
-  SetLength(TPA2,0);
-  SetLength(ATPA2,0);
 
-  For H := 0 To High(TBA) Do
+  For I := 0 To High(TBA) Do
   Begin
-    MBP := MiddleBox(TBA[H]);
-
     If (ChooseOption.OptionsExist(['Exam','mine','Examine','Canc','ncel','Cancel'],400)) Then
     Begin
       If Debug Then
@@ -426,43 +346,46 @@ Begin
     If Result Then
       Break;
 
-    MBP := MiddleBox(TBA[H]);
-
-    Mouse(Point(MBP.X+GaussRangeInt(-5,6),MBP.Y+GaussRangeInt(-10,10)),Mouse_Move,Mouse_Human);
+    MouseBox(TBA[I]);
 
     If (IsMouseOverText(['Use','pen','chest','ches','hest'],300)) Then
     Begin
       If Debug Then
         Writeln('Found chest, Clicking.');
 
-      FastClick(Mouse_Right);
+      SmartImage.Clear;
 
-      If ChooseOption.Select(['Use','chest'],RandomRange(700,900)) Then
-      Begin
-        Time:=GaussRangeInt(3000,8000);
-        T.Start;
-        Repeat
-          If Not IsLoggedIn Then
-            Exit;
-          If T.GetTime>Time Then
+      If LClick Then
+        FastClick(Mouse_Left) Else
+        Begin
+          FastClick(Mouse_Right);
+          If Not ChooseOption.Select(['Use','chest'],RandomRange(700,900)) Then
           Begin
-            If Debug Then
-              Writeln('Took too long to open chest');
-            SetLength(ATPA,0);
-            SetLength(TPA,0);
+            SetLength(TBA,0);
             Exit;
           End;
-          Wait(Random(100));
-        Until BankScreen.IsOpen Or PinScreen.IsOpen;
-        SetLength(ATPA,0);
-        SetLength(TPA,0);
-        Result:=True;
-        Exit;
-      End;
+        End;
+
+      Time:=GaussRangeInt(3000,8000);
+      T.Start;
+      Repeat
+        If Not IsLoggedIn Then
+          Exit;
+        If T.GetTime>Time Then
+        Begin
+          If Debug Then
+            Writeln('Took too long to open chest');
+          SetLength(TBA,0);
+          Exit;
+        End;
+        Wait(Random(100));
+      Until BankScreen.IsOpen Or PinScreen.IsOpen;
+      SetLength(TBA,0);
+      Result:=True;
+      Exit;
     End;
   End;
-  SetLength(ATPA,0);
-  SetLength(TPA,0);
+  SetLength(TBA,0);
 End;
 
 Function Banking: Boolean;
@@ -484,7 +407,7 @@ Begin
     If Not IsLoggedIn Then
       Exit;
 
-    If OpenBank Then
+    If OpenBank(LeftClick) Then
       Break;
   Until T.GetTime>6000;
 
@@ -500,7 +423,7 @@ Begin
 
   BankScreen.Close;
 
-  MouseBox(IntToBox(293,332,505,348),Mouse_Move,Mouse_Break);
+  MouseBox([293,332,505,348]);
 
   T.Reset;
   T.Start;
@@ -527,56 +450,6 @@ Begin
   Until T.GetTime>10000;
 End;
 
-Function SkillMenu(Skill: String; WaitTime: Integer = 4000): Boolean;
-var
-  t: TTimeMarker;
-  b: TBox;
-  s: String;
-  tpa : TPointArray;
-  atpa : T2DPointArray;
-begin
-  b := [237,35,366,57];
-
-  T.Start;
-  Repeat
-    If not isloggedIn Then
-      Exit;
-
-    findColorsTolerance(tpa, 697806, b, 63,colorSetting(0));
-
-    if length(tpa) < 100 then
-      Exit;
-
-    atpa := tpa.cluster(5);
-
-    b:= atpa.getbounds;
-    b.edit(-2,-2,+2,+2);
-    b.setlimit(mainscreen.getbounds);
-
-    s:=Replace(tesseractgettext(b.x1,b.y1,b.x2,b.y2, FILTER_SMALL_CHARS), ' ', '', [rfReplaceAll]);
-    result:=(pos(lowercase(Skill), lowercase(s)) > 0);
-
-    wait(random(100));
-  Until (Result) or (T.GetTime>WaitTime);
-End;
-
-function multiType(Key: String; chance, maxClicks: integer): boolean;
-var
-  clicks: integer;
-begin
-  result := true;
-
-  repeat
-    inc(clicks);
-    TypeSend(Key,False);
-
-    if (random(100) > chance) or (not result) then
-      break;
-
-    wait(50 + random(50));
-  until(clicks >= maxClicks);
-end;
-
 Procedure CutGems;
 Var
   X,Y: Integer;
@@ -585,23 +458,37 @@ Begin
   If Not IsLoggedIn Then
     Exit;
 
-  MultiType(ToStr(QuickKey),50,2);
+  Wait(GaussRangeInt(0, 500));
 
-  Wait(Random(1000));
+  SendKeys(ToStr(QuickKey), 60 + Random(60), 60 + Random(60));
 
-  MouseBox(IntToBox(293,332,505,348),Mouse_Move,Mouse_Break);
+  Wait(GaussRangeInt(0, 100));
 
-  If Not SkillMenu('crafting',RandomRange(6000,8000)) Then
+  MouseBox([293,332,505,348]);
+
+  If Not Productionscreen.IsOpen(RandomRange(4000,6000)) Then
     Exit;
 
-  Wait(RandomRange(500,1500));
+  Wait(GaussRangeInt(0, 200));
 
-  FastClick(Mouse_Left);
+  If GetItem Then
+  Begin
+    GemType:= Productionscreen.getSelectedBoxText;
+    GetItem:=False;
+  End;
 
-  If Not WaitPixelChange(10000,3) Then
+  Productionscreen.ClickStart;
+
+  SRL_Events[EVENT_ANTIBAN] := nil;
+  If Not TabBackpack.waitSlotPixelChange(3,GaussRangeInt(10000, 20000)) Then
+  Begin
+    SRL_Events[EVENT_ANTIBAN] := @Antiban;
     Exit;
+  End;
 
-  If WaitPixelChange(30000,28,True) Then
+  SRL_Events[EVENT_ANTIBAN] := @Antiban;
+
+  If TabBackpack.waitSlotPixelChange(28,GaussRangeInt(25000, 45000)) Then
   Begin
     IncEx(GemCount,28);
     ProgressReport;
@@ -613,11 +500,20 @@ Begin
   ClearDebug;
   AutoUpdateMe;
 
+  SmartEnableDrawing := True;
+  SRL_Events[EVENT_ANTIBAN] := @Antiban;
+
   SetupSRL;
 
   DeclarePlayers;
-  If Not Players[CurrentPlayer].Login Then
-    TerminateScript;
+  If Not IsLoggedIn Then
+  Begin
+    If Not Players[CurrentPlayer].Login Then
+      TerminateScript;
+
+    Writeln('Just loggedin, waiting a bit');
+    Wait(RandomRange(6000,10000));
+  End;
 
   If Not Debug Then
     DisableSRLDebug:=True;
@@ -637,7 +533,7 @@ Begin
   Y := RandomRange(-BIR * 60000, BIR * 60000);
   Z := RandomRange(-BFR * 60000, BFR * 60000);
 
-  Writeln('Looks like today were gonna be cutting some '+GemType+'s');
+  GetItem:= True;
   Writeln('Goodluck!');
 End;
 
